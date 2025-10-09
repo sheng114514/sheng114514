@@ -1,187 +1,362 @@
 # 5G Network Anomaly Dataset for Intrusion Detection
 
-This repository contains a dataset of network traffic from a 5G test lab environment, designed for developing and testing anomaly and intrusion detection systems. The dataset includes both normal traffic and malicious traffic from **Flooding** and **Denial-of-Service (DoS)** attacks.
+This README.md contains dataset of network traffic from a real 5G test lab environment, designed for developing and testing anomaly and intrusion detection systems. The dataset includes both `benign` traffic and `malicious` traffic from **flooding** , **fuzzing** and **Denial-of-service (DoS)** attacks.
+
+ℹ️ **Reference:**
+
+This dataset is developed with reference to the **5G-NIDD Dataset**, using similar data collection and preprocessing methodologies to ensure consistency and reliability.
 
 ---
 
-## 📋 Table of Contents
+## <br>📋 Table of Contents
 
--   [Overview](#-overview)
--   [Dataset Description](#-dataset-description)
--   [Data Generation Pipeline](#-data-generation-pipeline)
--   [Feature Set](#-feature-set)
--   [Repository Structure](#-repository-structure)
--   [Getting Started](#-getting-started)
--   [Dependencies](#-dependencies)
--   [Citation](#-citation)
--   [License](#-license)
+-   [📝Overview](#-overview)
+-   [📊Dataset Description](#-dataset-description)
+-   [🧪Data Generation Pipeline](#-data-generation-pipeline)
+    - [Step 1: Raw Data Capture](#step-1-raw-data-capture)
+    - [Step 2: GTP Layer Removal with TraceWrangler](#step-2-gtp-layer-removal-with-tracewrangler)
+    - [Step 3: Network Flow Generation with Argus](#step-3-network-flow-generation-with-argus)
+    - [Step 4: Feature Extraction with Argus](#step-4-feature-extraction-with-argus)
+    - [Step 5: Feature Computation and Labeling with Jupyter Notebook](#step-5-feature-computation-and-labeling-with-jupyter-notebook)
+      - [🧩Install Anaconda](#-install-anaconda)
+      - [📘Feature Computation Process](#-feature-computation-process)
+-   [📈Feature Set Overview](#-feature-set-overview)
+-   [📁Repository Structure](#-repository-structure)
 
 ---
 
-## 📝 Overview
+## <br>📝 Overview
 
 The security of 5G networks is critical, yet there is a scarcity of public datasets capturing realistic attack scenarios in this new architecture. This project aims to bridge that gap by providing a labeled dataset generated in a controlled 5G lab environment. The raw packet captures (`.pcapng`) were processed through a multi-stage pipeline to generate a feature-rich `.csv` file suitable for machine learning tasks.
 
-The primary attack scenarios captured are:
-* **UDP Flood Attack:** High-volume UDP packets are sent to a target device to saturate its resources.
-* **TCP SYN DoS Attack:** A large number of TCP SYN packets are sent to a target to exhaust its connection table.
+---
 
+## <br>📊 Dataset Description
 
+The final dataset is in the `/dataset` directory as `5G_Anomaly_Dataset.csv`. It contains network flow records, where each row represents a unidirectional or bidirectional flow of packets between a source and a destination. Each flow is described by a set of features and is labeled as either **Benign** or **Malicious**.
+
+| Category    | Description                                      |
+| :---------- | :----------------------------------------------- |
+| Benign      | Normal traffic simulating user activity          |
+| Malicious   | Traffic from flooding, fuzzing or Dos attacks    |
 
 ---
 
-## 📊 Dataset Description
+## <br>🧪 Data Generation Pipeline
 
-The final dataset is available in the `/data` directory as `5G_anomaly_dataset.csv`. It contains network flow records, where each row represents a unidirectional or bidirectional flow of packets between a source and a destination. Each flow is described by a set of features and is labeled as either **normal** or **attack**.
+The dataset was created using five-step process, designed to transform raw packet captures into a machine learning–ready datasets(.csv)
 
-| Category | Description                               |
-| :------- | :---------------------------------------- |
-| Normal   | Benign traffic simulating user activity.  |
-| Attack   | Traffic from UDP Flooding or TCP DoS attacks. |
+### **Step 1: Raw data capture**
 
----
+Traffic was captured in a 5G test lab environment using tools like Wireshark. The raw output is in the `.pcapng` format, which includes the **GPRS Tunnelling Protocol (GTP)** layer that encapsulates user traffic between the gNodeB and the UPF. 👉 Here is the raw data: [Raw data](https://mmuedumy-my.sharepoint.com/my?id=%2Fpersonal%2F1211110323%5Fstudent%5Fmmu%5Fedu%5Fmy%2FDocuments%2FPCAP&viewid=e3af6dff%2D37bb%2D422e%2Da01f%2D80d90eebd189&ga=1)
 
-## 🧪 Data Generation Pipeline
-
-The dataset was created using a four-step process, designed to transform raw packet captures into a clean, feature-engineered dataset.
-
-### **Step 1: Raw Data Capture**
-
-Traffic was captured in a 5G test lab environment using tools like Wireshark. The raw output is in the `.pcapng` format, which includes the **GPRS Tunnelling Protocol (GTP)** layer that encapsulates user traffic between the gNodeB and the UPF.
 
 ### **Step 2: GTP Layer Removal with Tracewrangler**
 
 To analyze the inner IP packets, the GTP encapsulation must be removed. We used **Tracewrangler** for this purpose. It strips the GTP headers and saves the inner packets to a new `.pcapng` file.
 
-```bash
-# Example Tracewrangler command
-tracewrangler -i original_capture.pcapng -o decapsulated.pcapng -d gtp
-```
+Open TraceWrangler → Load your `.pcapng` file → Apply **Remove GTP-U headers** in `Edit Files` task → Run the task
+
+![TraceWrangler Remove GTP](images/tracewrangler.png)
+
+![TraceWrangler Remove GTP](images/tracewrangler_2.png)
+
+Before removing GTP:
+
+![TraceWrangler Remove GTP](images/before_gtp.png)
+
+After removing GTP:
+
+![After Removing GTP](images/after_gtp.png)
+
 
 ### **Step 3: Network Flow Generation with Argus**
 
 The decapsulated `.pcapng` file was then processed using the **Argus (Audit Record Generation and Utilization System)** tool to convert packet-level data into network flows. Argus aggregates packets into flows based on a 5-tuple (source IP, destination IP, source port, destination port, and protocol).
 
 ```bash
-# Convert pcap to Argus flow data
-argus -r decapsulated.pcapng -w network_flows.argus
+# Convert pcapng to Argus flow data
+argus -r file_name.pcapng -w file_name.argus
 ```
 
-### **Step 4: Feature Extraction and Engineering**
+### **Step 4: Feature Extraction with Argus**
 
-This final step was divided into two parts:
+Once the `.argus` network flow file has been generated, we extract all **available flow-level features** using the Argus client tool (`ra`). These features are directly generated by Argus and represent network statistics collected per flow.
 
-1.  **Argus Feature Extraction:** The Argus client `ra` was used to extract a base set of features from the `.argus` flow data. These include features like duration, packet counts, byte counts, and protocol states.
+```bash
+#Extract features using ra and save to CSV
+ra -r file_name.argus -seq dur mean proto stos dtos sdsb ddsb sttl dttl pkts spkts dpkts bytes sbytes dbytes offset load sload dload loss sloss dloss ploss rate srate drate state swin dwin svid dvid stcpb dtcpb tcprtt synack ackdat -c, > file_name.csv
+```
 
-    ```bash
-    # Extract features using ra and save to CSV
-    ra -u -r network_flows.argus -s saddr daddr sport dport proto dur pkts bytes state -c, > initial_features.csv
-    ```
+### **Step 5: Feature Computation and Labeling with Jupyter Notebook**
 
-2.  **Custom Feature Computation (Jupyter Notebook):** Since Argus cannot compute all desired statistical or time-series features, a **Jupyter Notebook** (`feature_engineering.ipynb`) was used for further processing. This notebook uses Python libraries like Pandas and Scikit-learn to:
-    * Compute advanced features (e.g., flow bytes per second, packet inter-arrival time).
-    * Merge and clean the data.
-    * Add the final `label` column (e.g., 0 for normal, 1 for attack).
-    * Export the final dataset as `5G_anomaly_dataset.csv`.
+After Argus feature extraction, some advanced features are computed using **Jupyter Notebook**, as Argus cannot directly calculate all statistical or derived metrics (e.g., Hops, Mean Packets).
+
+We use **Anaconda**, which provides Python along with data science tools such as **Jupyter Notebook**, **Pandas**, and **NumPy**.
+
+#### 🧩 Install Anaconda
+
+Download and install from the official website:
+
+👉 [Anaconda Distribution](https://www.anaconda.com/products/distribution)
+
+Anaconda includes:
+- **Python 3.x**
+- **Jupyter Notebook / JupyterLab**
+- **Pandas, NumPy, Matplotlib, Scikit-learn**, and more
+
+Once installed, you can launch Jupyter Notebook in Ananconda Prompt:
+
+```bash
+jupyter notebook
+```
+
+#### 📘 Feature Computation Process
+
+Open the notebook at `notebook/feature_computation.ipynb` and compute additional derived features
 
 ---
 
-## 📈 Feature Set
+```bash
+import pandas as pd
+```
 
-The final dataset includes features generated by both Argus and our custom Python scripts.
+```bash
+df = pd.read_csv("file_name.csv")
+```
+##### 0️⃣ Preprocessing
 
-| Feature Name                  | Description                                            | Source           |
+Before feature computation, non-IP flows generated by Argus (e.g., protocol type `man`) were removed to ensure only valid traffic flows are processed.
+
+```bash
+#Drop rows where Proto = 'man' 
+df = df[df['Proto'] != 'man']
+```
+
+##### 1️⃣ Statistical Features — Sum, Min, Max
+
+Since Argus provides the Mean feature for flows, the Sum, Min, and Max values were derived using the same metric to maintain consistency.
+```base
+#Compute statistical features using the 'Mean' column
+df["Sum"] = df["Mean"]
+df["Min"] = df["Mean"]
+df["Max"] = df["Mean"]
+```
+
+##### 2️⃣ Hop-Based Features — sHops, dHops
+
+The sHops and dHops features estimate the number of hops between the source/destination hosts by inferring the initial TTL (Time-To-Live) values. A heuristic approach is used to guess the most likely initial TTL (commonly 32, 64, 128, or 255). 
+
+```bash
+#Function to infer hop count based on TTL
+def infer_hops(ttl):
+    if pd.isna(ttl):  # handle missing values
+        return None
+    if ttl <= 32:
+        init = 32
+    elif ttl <= 64:
+        init = 64
+    elif ttl <= 128:
+        init = 128
+    else:
+        init = 255
+    return init - ttl
+
+# Compute and insert hop features
+df["sHops"] = df["sTtl"].apply(infer_hops)
+df["dHops"] = df["dTtl"].apply(infer_hops)
+df.insert(10, "sHops", df.pop("sHops"))
+df.insert(11, "dHops", df.pop("dHops"))
+```
+
+##### 3️⃣ Mean Packet Features — sMeanPkts, dMeanPkts
+
+The sMeanPkts and dMeanPkts features represent the **average number of bytes per packet** for both source and destination directions.
+
+```bash
+# Compute mean bytes per packet for both directions
+df["sMeanPkts"] = df.apply(lambda x: x["SrcBytes"] / x["SrcPkts"] if x["SrcPkts"] > 0 else 0, axis=1)
+df["dMeanPkts"] = df.apply(lambda x: x["DstBytes"] / x["DstPkts"] if x["DstPkts"] > 0 else 0, axis=1)
+
+# Reorder columns for better readability
+df.insert(22, "sMeanPkts", df.pop("sMeanPkts"))
+df.insert(23, "dMeanPkts", df.pop("dMeanPkts"))
+```
+
+##### 4️⃣ Labeling and Metadata
+
+Each flow was labeled according to its type (normal or attack) and annotated with additional metadata for the attack type and tool used during traffic generation.
+
+**Label**
+
+| Column | Catogery | Description |
+| :----- | :-------------- | :---------- |
+| `Label` | `Malicious`, `Benign` | `Malicious` = attack flow, `Benign` = normal flow |
+
+**Attack Types** and **Attack Tools**
+
+| Column | Category |
+| :---------- | :------------|
+| Attack Type | `ICMPFlood`, `UDPFlood`, `SYNFlood`, `HTTPFlood`, `SlowrateDos`, `Fuzzing`,  |
+| Attack Tool | `Hping3`, `Goldeneye`, `Slowloris`, `Torshammer`, `Boofuzz` |
+
+
+```bash
+#Example 1: if file_name.csv contains benign traffic
+df = pd.read_csv("csv/attack_test1.csv")
+df["Attack Type"] = "Benign"
+df["Attack Tool"] = "Benign"
+df["Label"] = "Benign"
+```
+
+```bash
+#Example 2: if file_name.csv contains SYNFlood traffic
+df["Attack Type"] = "SYNFlood"
+df["Attack Tool"] = "hping3"
+df["Label"] = "Malicious"
+```
+
+```bash
+#Example 3: if file_name.csv contains slow rate dos traffic
+df["Attack Type"] = "SlowrateDos"
+df["Attack Tool"] = "Torshammer"
+df["Label"] = "Malicious"
+```
+
+##### 5️⃣ Dataset Merging
+
+After all individual CSV files (each representing different traffic scenarios such as **Benign**, **ICMPFlood**, **SYNFlood**, **UDPFlood**, **HTTPFlood**, **SlowrateDos**, and *Fuzzing*) have been processed, labeled, and computed, they are merged into a single unified dataset for training or analysis.
+
+```bash
+import pandas as pd
+```
+
+```bash
+# Read individual computed CSV files
+df1 = pd.read_csv("file_name1.csv")
+df2 = pd.read_csv("file_name2.csv")
+df3 = pd.read_csv("file_name3.csv")
+df4 = pd.read_csv("file_name4.csv")
+df5 = pd.read_csv("file_name5.csv")
+```
+
+```bash
+# Merge all datasets together
+df = pd.concat([df1, df2, df3, df4, df5], ignore_index=True)
+````
+
+```bash
+# Save as a single dataset
+df.to_csv("5G_Anomaly_Dataset.csv", index=False)
+```
+
+## 📈 Feature Set Overview
+
+The final dataset includes features generated by both **Argus** and **Python (Jupyter Notebook)**. These features describe network traffic characteristics for both benign and attack flows.
+
+### 🧮 Features Extracted from Argus
+
+| Feature Name | Description | Source |
 | :---------------------------- | :----------------------------------------------------- | :--------------- |
-| `Dur`                         | Total duration of the flow in seconds.                 | **Argus** |
-| `Proto`                       | Transaction protocol (e.g., tcp, udp, icmp).           | **Argus** |
-| `SrcAddr`                     | Source IP address.                                     | **Argus** |
-| `DstAddr`                     | Destination IP address.                                | **Argus** |
-| `TotPkts`                     | Total number of packets in the flow.                   | **Argus** |
-| `TotBytes`                    | Total number of bytes in the flow.                     | **Argus** |
-| `State`                       | TCP state of the flow.                                 | **Argus** |
-| `FlowBytesPerSec`             | Average number of bytes transmitted per second.        | **Jupyter Notebook** |
-| `MeanPktInterArrivalTime`     | The average inter-arrival time of packets in the flow. | **Jupyter Notebook** |
-| `Label`                       | `0` for Normal, `1` for Attack.                        | **Jupyter Notebook** |
-| *... (add other features here) ...* | *...* | *...* |
+| `Seq` | Sequence number of the flow record. | **Argus** |
+| `Dur` | Total duration of the flow in seconds. | **Argus** |
+| `Mean` | Mean value of flow measurements. | **Argus** |
+| `Proto` | Transaction protocol (e.g., TCP, UDP, ICMP). | **Argus** |
+| `sTos` | Source Type of Service. | **Argus** |
+| `dTos` | Destination Type of Service. | **Argus** |
+| `sDSb` | Source DS byte. | **Argus** |
+| `dDSb` | Destination DS byte. | **Argus** |
+| `sTtl` | Source Time to Live. | **Argus** |
+| `dTtl` | Destination Time to Live. | **Argus** |
+| `pkts` | Total packets in the flow. | **Argus** |
+| `spkts` | Source-to-destination packet count. | **Argus** |
+| `dpkts` | Destination-to-source packet count. | **Argus** |
+| `bytes` | Total bytes in the flow. | **Argus** |
+| `sbytes`| Source-to-destination bytes. | **Argus** |
+| `dbytes` | Destination-to-source bytes. | **Argus** |
+| `offset` | TCP segment offset. | **Argus** |
+| `load` | Total load in the flow. | **Argus** |
+| `sload` | Source load. | **Argus** |
+| `dload` | Destination load. | **Argus** |
+| `loss` | Total packet loss. | **Argus** |
+| `sloss` | Source packet loss. | **Argus** |
+| `dloss` | Destination packet loss. | **Argus** |
+| `ploss` | Percentage packet loss. | **Argus** |
+| `rate` | Total rate of transmission (bytes/sec). | **Argus** |
+| `srate` | Source rate (bytes/sec). | **Argus** |
+| `drate` | Destination rate (bytes/sec). | **Argus** |
+| `state` | Flow state (e.g., CON, FIN, INT). | **Argus** |
+| `swin` | Source TCP window size. | **Argus** |
+| `dwin` | Destination TCP window size. | **Argus** |
+| `svid` | Source VLAN ID. | **Argus** |
+| `dvid` | Destination VLAN ID. | **Argus** |
+| `stcpb` | Source TCP base sequence number. | **Argus** |
+| `dtcpb` | Destination TCP base sequence number. | **Argus** |
+| `tcprtt` | TCP round-trip time. | **Argus** |
+| `synack` | TCP SYN-ACK delay. | **Argus** |
+| `ackdat` | TCP ACK data delay. | **Argus** |
+
+---
+
+### 🧠 Derived / Computed Features (Jupyter Notebook)
+
+| Feature Name | Description | Source |
+| :---------------------------- | :----------------------------------------------------- | :--------------- |
+| `Sum` | Total sum of packet bytes within a flow window. | **Jupyter Notebook** |
+| `Min` | Minimum value of packet bytes or durations. | **Jupyter Notebook** |
+| `Max` | Maximum value of packet bytes or durations. | **Jupyter Notebook** |
+| `sHops` | Estimated source hop count (based on TTL). | **Jupyter Notebook** |
+| `dHops` | Estimated destination hop count (based on TTL). | **Jupyter Notebook** |
+| `sMeanPkts` | Average packets per flow from source. | **Jupyter Notebook** |
+| `dMeanPkts` | Average packets per flow from destination. | **Jupyter Notebook** |
+| `Label` | Network traffic category (e.g., Benign or Malicious). | **Jupyter Notebook** |
+| `Attack Type` | Specific attack category (e.g., ICMPFlood, SYNFlood, etc.). | **Jupyter Notebook** |
+| `Attack Tool` | The tool used to perform the attack (e.g., hping3, slowloris). | **Jupyter Notebook** |
 
 ---
 
 ## 📁 Repository Structure
 
 ```
-.
-├── data/
-│   └── 5G_anomaly_dataset.csv      # The final, cleaned dataset
+📁 secure5g-ai/5G Network Anomaly Dataset for Intrusion Detection/
 │
-├── notebooks/
-│   └── feature_engineering.ipynb   # Jupyter Notebook for custom feature creation
+├── 📄 README.md                         # Full documentation (the one we’re are now)
 │
-├── scripts/
-│   └── run_pipeline.sh             # (Optional) A shell script to automate the process
+├── 📁 datasets/
+│   ├── 📁 raw_argus/                    # Features extracted directly from Argus (step 4)
+│   │   ├── benign_flow.csv
+│   │   ├── icmpflood_flow.csv
+│   │   ├── synflood_flow.csv
+│   │   ├── udpflood_flow.csv
+│   │   ├── httpflood_flow.csv
+│   │   ├── slowratedos_flow.csv
+│   │   └── fuzzing_flow.csv
+│   │
+│   ├── 📁 computed_features/            # Features computed using Jupyter Notebook (step 5)
+│   │   ├── benign_computed.csv
+│   │   ├── icmpflood_computed.csv
+│   │   ├── synflood_computed.csv
+│   │   ├── udpflood_computed.csv
+│   │   ├── httpflood_computed.csv
+│   │   ├── slowratedos_computed.csv
+│   │   └── fuzzing_computed.csv
+│   │
+│   └── 5G_Anomaly_Dataset.csv          # The final merged dataset (for ML training)
 │
-└── README.md                       # This file
+├── 📁 notebooks/
+│   ├── feature_computation.ipynb        # Jupyter Notebook used for feature computation
+│   └── dataset_merging.ipynb            # Optional: notebook showing dataset merging
+│
+└── 📁 images/
+    ├── step1_capture.png
+    ├── step2_tracewrangler.png
+    ├── step3_argus.png
+    ├── step4_features.png
+    └── step5_computation.png                       
 ```
 
----
 
-## 🚀 Getting Started
 
-To get started with this dataset:
 
-1.  **Clone the repository:**
-    ```bash
-    git clone [https://github.com/](https://github.com/)[your-username]/[your-repo-name].git
-    cd [your-repo-name]
-    ```
 
-2.  **Explore the dataset:** The main dataset is located at `/data/5G_anomaly_dataset.csv`. You can load it using Pandas in Python:
-    ```python
-    import pandas as pd
-    df = pd.read_csv('data/5G_anomaly_dataset.csv')
-    print(df.head())
-    ```
 
-3.  **Review the feature engineering process:** Open the `/notebooks/feature_engineering.ipynb` file in Jupyter Lab or Jupyter Notebook to understand how the raw features from Argus were processed.
-
----
-
-## 🛠️ Dependencies
-
-To replicate the data generation pipeline, you will need the following tools:
-
-* **Tracewrangler:** For decapsulating GTP traffic.
-* **Argus:** For generating network flows from `.pcap` files.
-* **Python 3.8+** with the following libraries:
-    * `pandas`
-    * `numpy`
-    * `scikit-learn`
-    * `jupyterlab`
-
-You can install the Python dependencies using:
-```bash
-pip install pandas numpy scikit-learn jupyterlab
-```
-
----
-
-## ©️ Citation
-
-If you use this dataset in your research or work, please cite it as follows:
-
-```bibtex
-@misc{your_name_2025_5g,
-  author       = {[Your Name/Group Name]},
-  title        = {{A 5G Network Anomaly Dataset for DoS and Flooding Attacks}},
-  month        = {October},
-  year         = {2025},
-  publisher    = {GitHub},
-  journal      = {GitHub repository},
-  howpublished = {\url{[https://github.com/](https://github.com/)[your-username]/[your-repo-name]}}
-}
-```
-
----
-
-## 📜 License
-
-This project is licensed under the [MIT License](LICENSE.md).
